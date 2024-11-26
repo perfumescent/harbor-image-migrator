@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: portal-front
+  name: portal-front
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: portal-front
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: portal-front
+    spec:
+      hostAliases:
+        - hostnames:
+            - uc.hbgxs.cestcys.cn     # 需要替换用户中心的域名
+            - portal.hbgxs.cestcys.cn
+            - msg.hbgxs.cestcys.cn
+          ip: 192.168.1.3
+      containers:
+        - image: image.cestc.cn/digital/dev/portal-front:e173e09b5
+          imagePullPolicy: Always
+          name: portal-front
+          env:
+            - name: ENVIR
+              value: test
+            - name: REDIS_SERVER
+              value: 192.168.1.6
+            - name: REDIS_PWD
+              value: UserPasswordnN57:2
+            - name: REDIS_DATABASE
+              value: "11"
+            - name: MYSQL_SERVER
+              value: 192.168.1.6:3306/portal
+            - name: MYSQL_USERNAME
+              value: root
+            - name: MYSQL_PWD
+              value: UserPasswordnN57:2
+            - name: ES_SERVER
+              value: 192.168.1.5
+            - name: ES_PORT # 注意用ES的端口而不是kibana，否则读会有问题
+              value: "9200"
+            - name: ES_USER
+              value: elastic
+            - name: ES_PWD
+              value: Cestc@123ielastic
+            - name: UC_SERVER
+              value: uc.hbgxs.cestcys.cn
+            - name: PORTAL_SERVER # 需要有http
+              value: http://portal.hbgxs.cestcys.cn
+            - name: CESTC_MSG_SERVER
+              value: http://msg.hbgxs.cestcys.cn
+            - name: TODO_URL
+              value: http://todo-adapter-svc
+            - name: FDFS_SERVER
+              value: 192.168.1.5
+            - name: FDFS_PORT
+              value: "80"
+            - name: FDFS_TRACK_LIST
+              value: 192.168.1.5:22122
+            - name: FDFS_READ_FILE_URL
+              value: http://192.168.1.5:80
+            - name: CESTC_WEBSOCKET_SERVER
+              value: ws://msg.hbgxs.cestcys.cn/ws
+          ports:
+            - containerPort: 8091
+#          volumeMounts:
+#            - name: logs     # 挂载共享卷
+#              mountPath: /logs
+#        - name: fluent-bit
+#          image: image.cestc.cn/digital/fluent-bit:3.2.0
+#          ports:
+#            - containerPort: 2020
+#          volumeMounts:
+#            - name: logs
+#              mountPath: /logs
+#            - name: fluent-bit-config
+#              mountPath: /fluent-bit/etc/
+#          resources:
+#            limits:
+#              memory: "200Mi"
+#              cpu: "100m"
+#            requests:
+#              memory: "100Mi"
+#              cpu: "50m"
+#      volumes:
+#        - name: logs
+#          emptyDir: {}
+#        - name: fluent-bit-config
+#          configMap:
+#            name: fluent-bit-config
+#            items:
+#              - key: fluent-bit.conf
+#                path: fluent-bit.conf
+#              - key: parsers.conf
+#                path: parsers.conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: portal-front
+  name: portal-front
+#  namespace: dev
+spec:
+  ports:
+    - name: java
+      port: 8091
+      protocol: TCP
+      targetPort: 8091
+  selector:
+    app.kubernetes.io/name: portal-front

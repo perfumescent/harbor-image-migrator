@@ -1,9 +1,9 @@
 package ssh
 
 import (
+	"dockerImageMigrator/log"
 	"fmt"
 	"golang.org/x/crypto/ssh"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -63,12 +63,12 @@ func (s *SSHClient) Connect() error {
 	addr := fmt.Sprintf("%s:%d", s.Config.Host, s.Config.Port)
 	client, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
-		log.Printf("Failed to connect to %s: %v", addr, err)
+		log.Infof("Failed to connect to %s: %v", addr, err)
 		return fmt.Errorf("failed to connect: %v", err)
 	}
 
 	s.client = client
-	log.Printf("Successfully connected to %s", addr)
+	log.Infof("Successfully connected to %s", addr)
 	return nil
 }
 
@@ -84,14 +84,14 @@ func (s *SSHClient) ExecuteCommand(cmd string) (string, error) {
 	}
 	defer session.Close()
 
-	log.Printf("Executing command: %s", cmd)
+	log.Infof("Executing command: %s", cmd)
 	output, err := session.CombinedOutput(cmd)
 	if err != nil {
-		log.Printf("Command execution failed: %v", err)
+		log.Infof("Command execution failed: %v", err)
 		return string(output), fmt.Errorf("failed to execute command: %v", err)
 	}
 
-	log.Printf("Command executed successfully")
+	log.Infof("Command executed successfully")
 	return string(output), nil
 }
 
@@ -114,7 +114,7 @@ func (s *SSHClient) TransferFile(localPath, remotePath string) error {
 	}
 	defer localFile.Close()
 
-	log.Printf("Transferring file from %s to %s", localPath, remotePath)
+	log.Infof("Transferring file from %s to %s", localPath, remotePath)
 
 	// 确保远程目录存在
 	remoteDir := filepath.Dir(remotePath)
@@ -134,19 +134,60 @@ func (s *SSHClient) TransferFile(localPath, remotePath string) error {
 	}()
 
 	if err := session.Run(fmt.Sprintf("scp -t %s", remotePath)); err != nil {
-		log.Printf("File transfer failed: %v", err)
+		log.Infof("File transfer failed: %v", err)
 		return fmt.Errorf("failed to transfer file: %v", err)
 	}
 
-	log.Printf("File transferred successfully")
+	log.Infof("File transferred successfully")
 	return nil
 }
 
 // Close 关闭SSH连接
 func (s *SSHClient) Close() error {
 	if s.client != nil {
-		log.Printf("Closing SSH connection")
+		log.Infof("Closing SSH connection")
 		return s.client.Close()
 	}
+	return nil
+}
+
+// WriteStringToFile 将字符串内容写入远程文件
+func (s *SSHClient) WriteStringToFile(fileContentStr, remotePath string) error {
+	if s.client == nil {
+		return fmt.Errorf("client not connected")
+	}
+
+	// 创建新的会话
+	session, err := s.client.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session: %v", err)
+	}
+	defer session.Close()
+
+	log.Infof("Writing content to remote file: %s", remotePath)
+
+	// 确保远程目录存在
+	remoteDir := filepath.Dir(remotePath)
+	if _, err := s.ExecuteCommand(fmt.Sprintf("mkdir -p %s", remoteDir)); err != nil {
+		return fmt.Errorf("failed to create remote directory: %v", err)
+	}
+
+	// 通过 stdin pipe 写入文件内容
+	go func() {
+		w, _ := session.StdinPipe()
+		defer w.Close()
+
+		content := []byte(fileContentStr)
+		fmt.Fprintln(w, "C0644", len(content), filepath.Base(remotePath))
+		w.Write(content)
+		fmt.Fprint(w, "\x00")
+	}()
+
+	if err := session.Run(fmt.Sprintf("scp -t %s", remotePath)); err != nil {
+		log.Infof("Failed to write content to file: %v", err)
+		return fmt.Errorf("failed to write content to file: %v", err)
+	}
+
+	log.Infof("Content written to file successfully")
 	return nil
 }
